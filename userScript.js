@@ -12,7 +12,7 @@
 (function() {
     // Configuration
     const config = {
-        apiKey: '',
+        apiKey: 'YOUR_OPENAI_API_KEY',
         model: 'gpt-4o-mini',
         maxTokens: 150
     };
@@ -135,47 +135,72 @@
         content: `Provide a brief, helpful response to: ${searchQuery}`
     }];
 
-    // Function to query OpenAI API
-    function queryOpenAI() {
-        fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${config.apiKey}`
-            },
-            body: JSON.stringify({
-                model: config.model,
-                messages: messages,
-                max_tokens: config.maxTokens
-            })
-        })
-        .then(response => {
+    async function queryOpenAI() {
+        try {
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${config.apiKey}`,
+                    // Add this header to get streaming response
+                    'Accept': 'text/event-stream'
+                },
+                body: JSON.stringify({
+                    model: config.model,
+                    messages: messages,
+                    max_tokens: config.maxTokens,
+                    stream: true // Enable streaming
+                })
+            });
+    
             if (!response.ok) {
                 throw new Error(`API error: ${response.status}`);
             }
-            return response.json();
-        })
-        .then(data => {
-            if (!data.choices?.[0]?.message?.content) {
-                throw new Error('Invalid API response format');
+    
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let accumulatedResponse = '';
+    
+            // Prepare the container for streaming response
+            aiContainer.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div style="font-size: 16px; color: #8C91FE;">AI Response</div>
+                </div>
+                <div id="streaming-content" style="color: #e8eaed; margin-bottom: 16px;"></div>
+            `;
+    
+            const streamingContent = document.getElementById('streaming-content');
+    
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+    
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n');
+                
+                for (const line of lines) {
+                    if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+                        try {
+                            const jsonData = JSON.parse(line.slice(6));
+                            const content = jsonData.choices[0]?.delta?.content || '';
+                            if (content) {
+                                accumulatedResponse += content;
+                                streamingContent.innerHTML = parseMarkdown(accumulatedResponse);
+                            }
+                        } catch (e) {
+                            console.error('Error parsing chunk:', e);
+                        }
+                    }
+                }
             }
-
-            const aiResponse = data.choices[0].message.content;
+    
+            // After streaming is complete, add the follow-up input section
             messages.push({
                 role: 'assistant',
-                content: aiResponse
+                content: accumulatedResponse
             });
-
-            aiContainer.innerHTML = `
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; width: 100%;">
-                    <div style="font-size: 16px; color: #8C91FE;">AI Response</div>
-                    <!-- <button onclick="document.getElementById('ai-response-container').remove()"
-                            style="background: none; border: none; color: #9aa0a6; cursor: pointer; padding: 4px 8px; font-size: 20px; line-height: 1;">
-                    </button> -->
-                </div>
-                <div style="color: #e8eaed; margin-bottom: 16px; width: 100%;">
-                    ${parseMarkdown(aiResponse)}
-                </div>
+    
+            aiContainer.innerHTML += `
                 <div class="input-group" style="width: 90%;">
                     <input type="text" id="follow-up-input"
                            placeholder="Ask a follow-up question..."
@@ -185,59 +210,15 @@
                         Send
                     </button>
                 </div>
-                <div style="margin-top: 12px; font-size: 12px; color: #9aa0a6; width: 100%;">
+                <div style="margin-top: 12px; font-size: 12px; color: #9aa0a6;">
                     Powered by OpenAI
                 </div>
             `;
-
-            // Add input focus styles
-            const followUpInput = document.getElementById('follow-up-input');
-            followUpInput.addEventListener('focus', () => {
-                followUpInput.style.borderColor = '#8C91FE';
-            });
-            followUpInput.addEventListener('blur', () => {
-                followUpInput.style.borderColor = '#3c4043';
-            });
-
-            // Add button hover effect
-            const sendButton = document.getElementById('send-button');
-            sendButton.addEventListener('mouseover', () => {
-                sendButton.style.backgroundColor = '#6769FF';
-            });
-            sendButton.addEventListener('mouseout', () => {
-                sendButton.style.backgroundColor = '#8C91FE';
-            });
-
-            sendButton.addEventListener('click', () => {
-                const followUpQuestion = followUpInput.value.trim();
-                if (followUpQuestion) {
-                    messages.push({
-                        role: 'user',
-                        content: followUpQuestion
-                    });
-                    aiContainer.innerHTML = `
-                        <div style="display: flex; align-items: center; gap: 12px;">
-                            <div style="width: 20px; height: 20px; border: 2.5px solid #8C91FE; border-radius: 50%; border-top-color: transparent; animation: spin 1s linear infinite;"></div>
-                            <div style="color: #e8eaed;">Getting AI response...</div>
-                        </div>
-                        <style>
-                            @keyframes spin {
-                                to { transform: rotate(360deg); }
-                            }
-                        </style>
-                    `;
-                    queryOpenAI();
-                }
-            });
-
-            // Add enter key support
-            followUpInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    sendButton.click();
-                }
-            });
-        })
-        .catch(error => {
+    
+            // Re-add event listeners for the follow-up input
+            addInputEventListeners();
+    
+        } catch (error) {
             aiContainer.innerHTML = `
                 <div style="color: #f28b82; display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #2d2d2d; border-radius: 8px;">
                     <div>Error: ${error.message}</div>
@@ -247,8 +228,45 @@
                     </button>
                 </div>
             `;
-        });
+        }
     }
+    
+    // Helper function to add input event listeners
+    function addInputEventListeners() {
+        const followUpInput = document.getElementById('follow-up-input');
+        const sendButton = document.getElementById('send-button');
+    
+        followUpInput.addEventListener('focus', () => {
+            followUpInput.style.borderColor = '#8C91FE';
+        });
+        followUpInput.addEventListener('blur', () => {
+            followUpInput.style.borderColor = '#3c4043';
+        });
+    
+        sendButton.addEventListener('mouseover', () => {
+            sendButton.style.backgroundColor = '#6769FF';
+        });
+        sendButton.addEventListener('mouseout', () => {
+            sendButton.style.backgroundColor = '#8C91FE';
+        });
+    
+        sendButton.addEventListener('click', () => {
+            const followUpQuestion = followUpInput.value.trim();
+            if (followUpQuestion) {
+                messages.push({
+                    role: 'user',
+                    content: followUpQuestion
+                });
+                queryOpenAI();
+            }
+        });
+    
+        followUpInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendButton.click();
+            }
+        });
+    }    
 
     // Initial query
     queryOpenAI();
