@@ -1,6 +1,6 @@
 // ==UserScript==
-// @name         google chatgpt
-// @namespace    https://github.com/kbdevs/aisearchsummary/
+// @name         Search Summary
+// @namespace    https://github.com/kbdevs/aisearchtools/
 // @version      2024-11-16
 // @description  selfhosted kinda ai search summaries
 // @author       kbdevs
