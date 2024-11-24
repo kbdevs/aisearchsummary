@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Page Summarizer
-// @namespace    https://github.com/kbdevs/aisearchsummary/
-// @version      2024-11-16
+// @namespace    https://github.com/kbdevs/aisearchtools/
+// @version      2024-11-24
 // @description  AI-powered page text summarizer
 // @author       kbdevs
 // @match        *://*/*
